@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:e2/flippableCard.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';  //sharedpreference
 
 // main entry point
 void main() {
@@ -44,7 +45,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         // set theme color
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
       ),
       home: const MyHomePage(title: 'Example'),
     );
@@ -116,6 +117,18 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
             // action in the IDE, or press "p" in the console), to see the
             // wireframe for each widget.??????
             children: [
+              // TODO: this supposed to work but not actually on web idk why
+              Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  image: DecorationImage(
+                    image: NetworkImage('https://picsum.photos/536/354'),
+                    fit: BoxFit.cover, // Ensures the image fills the container
+                  ),
+                ),
+              ),
               const Text('This is an example of synthesis poisonous people:'),
               Text(
                 '$_counter',
@@ -145,7 +158,7 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => GamePage(title: "ManPo", data: _data)
+                      builder: (context) => GamePage(title: "ManPo", data: _data, difficulty: selectedDifficulty!.label)
                     ),
                   );
                 } : null,  // null for "dont take action"
@@ -162,9 +175,10 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
 
 // game page
 class GamePage extends StatefulWidget {
-  const GamePage({super.key, required this.title, required this.data});
+  const GamePage({super.key, required this.title, required this.data, required this.difficulty});
   final String title;
   final List<int> data;
+  final String difficulty;
   @override
   State<GamePage> createState() => _GamePageState();
 }
@@ -176,6 +190,7 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
 
   // TODO: change type of _data
   late final List<int> _data;
+  late final String _difficulty;
   final Set<int> _matched = {};
   final Set<int> _faceUp = {};  // found matches will stay face up
   int? _firstPick;
@@ -191,6 +206,7 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
     super.initState();
     // Use the passed data from widget
     _data = widget.data;
+    _difficulty = widget.difficulty;
     // Show all cards face-up for a short preview, then flip back and start timer
     _previewing = true;
     _faceUp.addAll(List.generate(_data.length, (i) => i));
@@ -248,13 +264,13 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
         }
       });
       if (_gameOver) {
-        final time = _formatTime(_elapsedSeconds);
+        final time = formatTime(_elapsedSeconds);
         Future.delayed(const Duration(seconds: 2), () {
           if (!mounted) return;
           // replace the screen, no turning back
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => ResultPage(timeElapsed: time)),
+            MaterialPageRoute(builder: (context) => ResultPage(timeElapsed: _elapsedSeconds, difficulty: _difficulty)),
           );
         });
       }
@@ -270,18 +286,12 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
     }
   }
 
-  String _formatTime(int seconds) {
-    int minutes = seconds ~/ 60;
-    int secs = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        title: Text("${widget.title}-${widget.difficulty}"),
       ),
       body: Center(
         child: Padding(
@@ -290,7 +300,7 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
             children: [
               const Text('This is an example of synthesis poisonous people:'),
               Text(
-                _formatTime(_elapsedSeconds),
+                formatTime(_elapsedSeconds),
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               // Gridview
@@ -375,13 +385,14 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
 }
 
 class ResultPage extends StatefulWidget {
-  const ResultPage({super.key, required this.timeElapsed});
+  const ResultPage({super.key, required this.timeElapsed, required this.difficulty});
 
   // home page widget. stateful w/ State object of appearance.
   // this is configuration for the state. Fields in a Widget subclass are
   // always marked "final".
 
-  final String timeElapsed;
+  final int timeElapsed;
+  final String difficulty;
 
   // see state below
   @override
@@ -391,13 +402,33 @@ class ResultPage extends StatefulWidget {
 // everything that happens on homepage
 class _ResultPageState extends State<ResultPage> {
 
-  late final String _timeElapsed;
+  late final int _timeElapsed;
+  late final String _difficulty;
+  String displayMessage = "Checking...";
+  String bestTime = "--:--";
 
   @override
   void initState() {
     super.initState();
     // TODO: replace with actual data
     _timeElapsed = widget.timeElapsed;
+    _checkBestPerformance();
+  }
+
+  void _checkBestPerformance() async {
+    final double fastest = await readTime(_difficulty);
+    if (fastest > _timeElapsed) {
+      setState(() {
+        displayMessage = "NEW RECORD!";
+        bestTime = formatTime(_timeElapsed);
+      });
+      saveTime(_timeElapsed, _difficulty);
+    } else {
+      setState(() {
+        displayMessage = "KEEP IT UP!";
+        bestTime = formatTime(fastest.toInt());
+      });
+    }
   }
 
   @override
@@ -418,22 +449,40 @@ class _ResultPageState extends State<ResultPage> {
             children: [
               const Text('Time Elapsed:'),
               Text(
-                _timeElapsed,
+                formatTime(_timeElapsed),
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
-              // Gridview
-              FloatingActionButton(
-                onPressed: () => {Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => MyHomePage(title: "Example")
-                  ),
-                )},
-              ),
+              Text(displayMessage),
+              FilledButton(
+                  onPressed:  () => {Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => MyHomePage(title: "Example")
+                    ),
+                  )},
+                  child: const Text('Finish')
+              )
             ],
           ),
         ),
       ),
     );
   }
+}
+
+Future<void> saveTime(int timeInSeconds, String difficulty) async {
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  await prefs.setDouble(difficulty, timeInSeconds.toDouble());
+}
+
+Future<double> readTime(String difficulty) async {
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  double? timeInSeconds = prefs.getDouble(difficulty);
+  return timeInSeconds?? double.infinity;
+}
+
+String formatTime(int seconds) {
+  int minutes = seconds ~/ 60;
+  int secs = seconds % 60;
+  return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
 }
