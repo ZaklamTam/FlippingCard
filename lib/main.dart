@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:math';
 
 import 'package:e2/flippableCard.dart';
@@ -6,6 +8,28 @@ import 'package:flutter/material.dart';
 // main entry point
 void main() {
   runApp(const MyApp());
+}
+
+typedef DifficultyEntry = DropdownMenuEntry<DifficultyLabel>;
+
+// DropdownMenuEntry labels and values for the first dropdown menu.
+enum DifficultyLabel {
+  easy('Easy', 3),  // 2x3 = 6
+  medium('Medium', 6),  // 3x4 = 12
+  hard('Hard', 10);  // 4x5 = 20
+
+  const DifficultyLabel(this.label, this.cardNumber);
+  final String label;
+  final int cardNumber;
+
+  static final List<DifficultyEntry> entries = UnmodifiableListView<DifficultyEntry>(
+    values.map<DifficultyEntry>(
+          (DifficultyLabel difficulty) => DifficultyEntry(
+        value: difficulty,
+        label: difficulty.label,
+      ),
+    ),
+  );
 }
 
 // appli root class (canvas, stateless)
@@ -42,65 +66,25 @@ class MyHomePage extends StatefulWidget {
 }
 
 // everything that happens on homepage
-// flippable widget https://www.youtube.com/watch?v=OjqWQrqTfWY
-// refinement https://medium.com/flutter-community/flutter-flip-card-animation-eb25c403f371
 class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateMixin {
   final int _counter = 0;
+  final TextEditingController selectionController = TextEditingController();
+  DifficultyLabel? selectedDifficulty;
 
   // TODO: change type of _data
-  late final List<int> _data;
-  final Set<int> _matched = {};
-  final Set<int> _faceUp = {};  // found matches will stay face up
-  int? _firstPick;
-  bool _busy = false;
+  List<int> _data = [];
 
   @override
   void initState() {
     super.initState();
-    // TODO: replace with actual data
-    _data = List.generate(10, (i) => i+1);
+  }
+
+  void _generateData(int n) {
+    _data = List.generate(n, (i) => i+1);
     //_data += _data;
     //_data.addAll(_data); Concurrent modification during iteration: Instance(length:3) of '_GrowableList'.
     _data.addAll(_data.toList());
     _data.shuffle();
-  }
-
-  void _onCardTapped(int index) {
-    if (_busy) return;
-    if (_matched.contains(index)) return;
-    if (_faceUp.contains(index)) return;
-
-    final firstPick = _firstPick;
-
-    setState(() {
-      _faceUp.add(index);
-      if (firstPick == null) {
-        _firstPick = index;
-      } else {
-        _firstPick = null;
-        _busy = true;
-      }
-    });
-
-    if (firstPick == null) return;
-    final secondPick = index;
-
-    if (_data[firstPick] == _data[secondPick]) {
-      setState(() {
-        _matched.add(firstPick);
-        _matched.add(secondPick);
-        _busy = false;
-      });
-    } else {
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (!mounted) return;
-        setState(() {
-          _faceUp.remove(firstPick);
-          _faceUp.remove(secondPick);
-          _busy = false;
-        });
-      });
-    }
   }
 
   @override
@@ -110,6 +94,7 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
     // having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         //backgroundColor: Colors.amber,  // individual color settings
         // Here we take the value from the MyHomePage object that was created by
@@ -136,14 +121,35 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
                 '$_counter',
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
-              // Gridview
-              FloatingActionButton(
-                onPressed: () => {Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GamePage(title: "ManPo")
-                  ),
-                )},
+              DropdownButton<DifficultyLabel>(
+                value: selectedDifficulty?? DifficultyLabel.easy,
+                hint: const Text('Difficulty'),
+                onChanged: (DifficultyLabel? difficulty) {
+                  setState(() {
+                    selectedDifficulty = difficulty;
+                  });
+                },
+                items: DifficultyLabel.values.map<DropdownMenuItem<DifficultyLabel>>((DifficultyLabel difficulty) {
+                  return DropdownMenuItem<DifficultyLabel>(
+                    value: difficulty,
+                    child: Text(difficulty.label),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: (selectedDifficulty != null) ? () {
+                  setState(() {
+                    _generateData(selectedDifficulty!.cardNumber);
+                  });
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => GamePage(title: "ManPo", data: _data)
+                    ),
+                  );
+                } : null,  // null for "dont take action"
+                child: const Text('Start Game')
               ),
             ],
           ),
@@ -156,8 +162,9 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
 
 // game page
 class GamePage extends StatefulWidget {
-  const GamePage({super.key, required this.title});
+  const GamePage({super.key, required this.title, required this.data});
   final String title;
+  final List<int> data;
   @override
   State<GamePage> createState() => _GamePageState();
 }
@@ -173,16 +180,41 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
   final Set<int> _faceUp = {};  // found matches will stay face up
   int? _firstPick;
   bool _busy = false;
+  //late Timer _timer;
+  Timer? _timer;  // avoid exiting in the preview stage and causes error
+  int _elapsedSeconds = 0;
+  bool _gameOver = false;
+  bool _previewing = true;
 
   @override
   void initState() {
     super.initState();
-    // TODO: replace with actual data
-    _data = List.generate(10, (i) => i+1);
-    //_data += _data;
-    //_data.addAll(_data); Concurrent modification during iteration: Instance(length:3) of '_GrowableList'.
-    _data.addAll(_data.toList());
-    _data.shuffle();
+    // Use the passed data from widget
+    _data = widget.data;
+    // Show all cards face-up for a short preview, then flip back and start timer
+    _previewing = true;
+    _faceUp.addAll(List.generate(_data.length, (i) => i));
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() {
+        _faceUp.clear();
+        _previewing = false;
+        // Start the timer after preview ends
+        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (!_gameOver) {
+            setState(() {
+              _elapsedSeconds++;
+            });
+          }
+        });
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();  // tolerates with non existance of timer
+    super.dispose();
   }
 
   void _onCardTapped(int index) {
@@ -210,7 +242,22 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
         _matched.add(firstPick);
         _matched.add(secondPick);
         _busy = false;
+        // Check if game is over
+        if (_matched.length == _data.length) {
+          _gameOver = true;
+        }
       });
+      if (_gameOver) {
+        final time = _formatTime(_elapsedSeconds);
+        Future.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          // replace the screen, no turning back
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => ResultPage(timeElapsed: time)),
+          );
+        });
+      }
     } else {
       Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
@@ -221,6 +268,12 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
         });
       });
     }
+  }
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -237,7 +290,7 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
             children: [
               const Text('This is an example of synthesis poisonous people:'),
               Text(
-                '$_counter',
+                _formatTime(_elapsedSeconds),
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               // Gridview
@@ -252,11 +305,16 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
                     int bestCols = 1;
                     double bestScore = double.infinity;
 
+                    // starting from 1 col up to n, tries to find the best layout
                     for (int cols = 1; cols <= n; cols++) {
                       final rows = (n / cols).ceil();
                       final cellW = (constraints.maxWidth - spacing * (cols - 1)) / cols;
                       final cellH = (constraints.maxHeight - spacing * (rows - 1)) / rows;
-                      final score = (cellW - cellH).abs();
+                      
+                      // Heavily penalize layouts that leave empty slots
+                      final emptySlots = (rows * cols) - n;
+                      final score = (cellW - cellH).abs() + (emptySlots * 10000);
+                      
                       if (score < bestScore) {
                         bestScore = score;
                         bestCols = cols;
@@ -296,7 +354,7 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
                                   key: ValueKey('card_$index'),
                                   display: value,
                                   faceUp: isFaceUp,
-                                  enabled: !_busy && !isMatched && !isFaceUp,
+                                  enabled: !_previewing && !_busy && !isMatched && !isFaceUp,
                                   onTap: () => _onCardTapped(index),
                                 )
                               )
@@ -307,6 +365,70 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
                     );
                   },
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ResultPage extends StatefulWidget {
+  const ResultPage({super.key, required this.timeElapsed});
+
+  // home page widget. stateful w/ State object of appearance.
+  // this is configuration for the state. Fields in a Widget subclass are
+  // always marked "final".
+
+  final String timeElapsed;
+
+  // see state below
+  @override
+  State<ResultPage> createState() => _ResultPageState();
+}
+
+// everything that happens on homepage
+class _ResultPageState extends State<ResultPage> {
+
+  late final String _timeElapsed;
+
+  @override
+  void initState() {
+    super.initState();
+    // TODO: replace with actual data
+    _timeElapsed = widget.timeElapsed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // rerun every time setState is called.
+    // optimized, so just rebuild anything that needs updating rather than
+    // having to individually change instances of widgets.
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text("GAME OVER!"),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              const Text('Time Elapsed:'),
+              Text(
+                _timeElapsed,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              // Gridview
+              FloatingActionButton(
+                onPressed: () => {Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => MyHomePage(title: "Example")
+                  ),
+                )},
               ),
             ],
           ),
