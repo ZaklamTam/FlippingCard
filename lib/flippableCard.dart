@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 class FlippableCard extends StatefulWidget {
-  final int display;
+  final String display;
   final bool faceUp;
   final bool enabled;
   final VoidCallback onTap;
@@ -79,7 +79,7 @@ class _FlippableCardState extends State<FlippableCard> with SingleTickerProvider
               transform: Matrix4.rotationY(angle)..setEntry(3, 0, tilt),
               alignment: Alignment.center,
               child: _animation.value < 0.5
-                  ? _buildCard(Theme.of(context).colorScheme.inversePrimary, "HAHAHA")
+                  ? _buildCard(Theme.of(context).colorScheme.inversePrimary, "?")
                   : Transform.scale(
                       scaleX: -1,
                       scaleY: 1,

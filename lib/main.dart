@@ -33,6 +33,31 @@ enum DifficultyLabel {
   );
 }
 
+typedef ThemeSelection = DropdownMenuEntry<CardTheme>;
+
+enum CardTheme {
+  expressions("Expressions", ['😀','😂','🥰','😎','🤔','😴','😭','😡','🤯','😱']),
+  animals("Animals", ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯']),
+  foods("Foods", ['🍎','🍔','🍕','🌮','🍩','🥐','🍣','🍧','🍦','🍰']),
+  activities("Activities", ['⚽','🏀','🏈','⚾','🎾','🏐','🏉','🎱','🏓','🏸']),
+  travel("Travel", ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐']),
+  objects("Objects", ['⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️']),
+  symbols("Symbols", ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔']);
+
+  const CardTheme(this.label, this.emojis);
+  final String label;
+  final List<String> emojis;
+
+  static final List<ThemeSelection> entries = UnmodifiableListView<ThemeSelection>(
+    values.map<ThemeSelection>(
+          (CardTheme cardTheme) => ThemeSelection(
+        value: cardTheme,
+        label: cardTheme.label,
+      ),
+    ),
+  );
+}
+
 // appli root class (canvas, stateless)
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -71,19 +96,19 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
   final int _counter = 0;
   final TextEditingController selectionController = TextEditingController();
   DifficultyLabel? selectedDifficulty;
+  CardTheme? selectedCategory;
 
   // TODO: change type of _data
-  List<int> _data = [];
+  //List<int> _data = [];
+  List<String> _data = [];
 
   @override
   void initState() {
     super.initState();
   }
 
-  void _generateData(int n) {
-    _data = List.generate(n, (i) => i+1);
-    //_data += _data;
-    //_data.addAll(_data); Concurrent modification during iteration: Instance(length:3) of '_GrowableList'.
+  void _generateData(CardTheme theme, int n) {
+    _data = theme.emojis.take(n).toList();
     _data.addAll(_data.toList());
     _data.shuffle();
   }
@@ -117,22 +142,29 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
             // action in the IDE, or press "p" in the console), to see the
             // wireframe for each widget.??????
             children: [
-              // TODO: this supposed to work but not actually on web idk why
-              Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(15),
-                  image: DecorationImage(
-                    image: NetworkImage('https://picsum.photos/536/354'),
-                    fit: BoxFit.cover, // Ensures the image fills the container
-                  ),
+              (selectedCategory != null)?
+                Text(
+                  selectedCategory!.emojis[0],
+                  style: Theme.of(context).textTheme.headlineLarge,
+                ) :
+                Text(
+                  "?",
+                  style: Theme.of(context).textTheme.headlineLarge,
                 ),
-              ),
-              const Text('This is an example of synthesis poisonous people:'),
-              Text(
-                '$_counter',
-                style: Theme.of(context).textTheme.headlineMedium,
+              DropdownButton<CardTheme>(
+                value: selectedCategory?? CardTheme.animals,
+                hint: const Text('Category'),
+                onChanged: (CardTheme? category) {
+                  setState(() {
+                    selectedCategory = category;
+                  });
+                },
+                items: CardTheme.values.map<DropdownMenuItem<CardTheme>>((CardTheme category) {
+                  return DropdownMenuItem<CardTheme>(
+                    value: category,
+                    child: Text(category.label),
+                  );
+                }).toList(),
               ),
               DropdownButton<DifficultyLabel>(
                 value: selectedDifficulty?? DifficultyLabel.easy,
@@ -151,9 +183,9 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
               ),
               const SizedBox(height: 16),
               FilledButton(
-                onPressed: (selectedDifficulty != null) ? () {
+                onPressed: (selectedDifficulty != null && selectedCategory != null) ? () {
                   setState(() {
-                    _generateData(selectedDifficulty!.cardNumber);
+                    _generateData(selectedCategory!, selectedDifficulty!.cardNumber);
                   });
                   Navigator.push(
                     context,
@@ -177,7 +209,7 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
 class GamePage extends StatefulWidget {
   const GamePage({super.key, required this.title, required this.data, required this.difficulty});
   final String title;
-  final List<int> data;
+  final List<String> data;
   final String difficulty;
   @override
   State<GamePage> createState() => _GamePageState();
@@ -186,10 +218,8 @@ class GamePage extends StatefulWidget {
 // flippable widget https://www.youtube.com/watch?v=OjqWQrqTfWY
 // refinement https://medium.com/flutter-community/flutter-flip-card-animation-eb25c403f371
 class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin {
-  final int _counter = 0;
-
   // TODO: change type of _data
-  late final List<int> _data;
+  late final List<String> _data;
   late final String _difficulty;
   final Set<int> _matched = {};
   final Set<int> _faceUp = {};  // found matches will stay face up
@@ -201,12 +231,30 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
   bool _gameOver = false;
   bool _previewing = true;
 
+  Key _key = UniqueKey();
+
   @override
   void initState() {
+    // initialization of the page
     super.initState();
     // Use the passed data from widget
     _data = widget.data;
     _difficulty = widget.difficulty;
+    _gameSetup();
+  }
+
+  // init a new game
+  void _gameSetup() {
+    _timer?.cancel();
+    _matched.clear();
+    _faceUp.clear();
+    _firstPick = null;
+    _busy = false;
+    _elapsedSeconds = 0;
+    _gameOver = false;
+    
+    _data.shuffle(); // Shuffle the cards
+    
     // Show all cards face-up for a short preview, then flip back and start timer
     _previewing = true;
     _faceUp.addAll(List.generate(_data.length, (i) => i));
@@ -231,6 +279,13 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
   void dispose() {
     _timer?.cancel();  // tolerates with non existance of timer
     super.dispose();
+  }
+
+  void _reset() {
+    setState(() {
+      _gameSetup();
+      _key = UniqueKey();
+    });
   }
 
   void _onCardTapped(int index) {
@@ -264,7 +319,6 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
         }
       });
       if (_gameOver) {
-        final time = formatTime(_elapsedSeconds);
         Future.delayed(const Duration(seconds: 2), () {
           if (!mounted) return;
           // replace the screen, no turning back
@@ -292,11 +346,18 @@ class _GamePageState extends State<GamePage> with SingleTickerProviderStateMixin
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text("${widget.title}-${widget.difficulty}"),
+        actions: [
+          TextButton(
+              onPressed: (!_previewing && !_gameOver)? _reset : null,
+              child: Text("Reset")
+          )
+        ],
       ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
+            key: _key,
             children: [
               const Text('This is an example of synthesis poisonous people:'),
               Text(
@@ -412,6 +473,7 @@ class _ResultPageState extends State<ResultPage> {
     super.initState();
     // TODO: replace with actual data
     _timeElapsed = widget.timeElapsed;
+    _difficulty = widget.difficulty;
     _checkBestPerformance();
   }
 
@@ -453,6 +515,7 @@ class _ResultPageState extends State<ResultPage> {
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               Text(displayMessage),
+              Text("Best: $bestTime"),
               FilledButton(
                   onPressed:  () => {Navigator.pushReplacement(
                     context,
