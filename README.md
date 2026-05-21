@@ -14,6 +14,8 @@ A visually polished, highly responsive Memory Matching Card Game built with Flut
 * **Real-time Timer**: Tracks exactly how many seconds it takes for you to complete the puzzle.
 * **Memory Preview & Reset**: Briefly reveals all card positions at the very start of a round for 2 seconds so you can memorize them. Features a built-in Reset button to instantly restart the current board.
 * **Local High Score Leaderboard**: Persistently tracks your fastest completion times directly on the device using `SharedPreferences`. High scores are uniquely saved per specific Category & Difficulty combination (e.g., your separate records for "Animals - Hard" vs "Foods - Easy" won't overwrite each other).
+* **Web App Support**: Fully compiled and optimized to run flawlessly within modern web browsers, scaling naturally to fit any window size or orientation.
+* **Playful Typography**: Integrates stylized Google Fonts with intentionally enlarged ("louder") point sizes to emphasize actions, stats, and states, creating an upbeat, immersive arcade gaming vibe.
 
 ## Architecture
 
@@ -23,6 +25,20 @@ This project was carefully refactored out of a monolith into a clean Separation 
 - `lib/game_page.dart`: Core game mechanics, timer lifecycle, card validation matching, and dynamic layout scaling computation.
 - `lib/result_page.dart`: Final evaluation screen that compares your completion time against historical local records, tracking if you set a "NEW RECORD!".
 - `lib/flippableCard.dart`: Reusable custom widget handling the 3D matrix transform logic for the smooth card flipping animations.
+
+## Tech Stack
+
+* **Framework:** [Flutter](https://flutter.dev/) (Cross-platform UI toolkit)
+* **Language:** [Dart](https://dart.dev/)
+* **State Management:** Native Flutter StatefulWidgets (`setState`) with localized state handling.
+* **Local Storage:** `shared_preferences` package (for cross-session leaderboard persistence).
+* **Animations:** Native `AnimationController` and `Transform` widgets natively rendering 3D matrix manipulations.
+
+## Configuration
+
+* **Dependencies:** Cleaned environment relying solely on standard Flutter foundation libraries and `shared_preferences`. Removed any sluggish third-party network image loads and unused emoji-picker plugins off the main thread.
+* **Platforms:** Runs out-of-the-box natively on Android, iOS, Windows, macOS, Linux, and Web browsers.
+* **Assets:** Game uses native system emoji renderings so no heavy external image asset downloads are required, completely preserving fast startup times. Memory persistence logic automatically scopes to the native sandbox across all supported platforms.
 
 ## Getting Started
 
