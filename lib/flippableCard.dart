@@ -1,7 +1,10 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+// flippable widget https://www.youtube.com/watch?v=OjqWQrqTfWY
+// refinement https://medium.com/flutter-community/flutter-flip-card-animation-eb25c403f371
 class FlippableCard extends StatefulWidget {
   final String display;
   final bool faceUp;
@@ -100,7 +103,8 @@ class _FlippableCardState extends State<FlippableCard> with SingleTickerProvider
         alignment: Alignment.center,
         child: Text(
           textBody,
-          style: Theme.of(context).textTheme.headlineMedium,
+          style: GoogleFonts.rubikSprayPaint(fontSize: 60),
+          textAlign: TextAlign.center,
         )
     );
   }
